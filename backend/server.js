@@ -12,15 +12,22 @@ const app = express();
 app.use(helmet());
 app.use(cors({
   origin: function(origin, callback) {
+    // Allow no-origin requests (curl, Render health checks, mobile)
+    if (!origin) return callback(null, true);
     const allowed = [
-      'http://localhost:3000',
-      process.env.FRONTEND_URL,
-    ].filter(Boolean);
-    // Allow requests with no origin (mobile apps, curl, Render health checks)
-    if (!origin || allowed.some(a => origin.startsWith(a))) {
+      /^http:\/\/localhost(:\d+)?$/,          // any localhost port
+      /^https:\/\/.*\.vercel\.app$/,           // any vercel.app subdomain
+      /^https:\/\/.*\.onrender\.com$/,         // any render subdomain
+    ];
+    // Also allow explicit FRONTEND_URL env var
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
+      return callback(null, true);
+    }
+    if (allowed.some(pattern => pattern.test(origin))) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log('CORS blocked:', origin);
+      callback(new Error('Not allowed by CORS: ' + origin));
     }
   },
   credentials: true
@@ -76,7 +83,7 @@ app.use((err, req, res, next) => {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ MongoDB connected');
-    const PORT = process.env.PORT || 10000;
+    const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => console.log(`🚀 GreenLedger API running on port ${PORT}`));
   })
   .catch(err => {
