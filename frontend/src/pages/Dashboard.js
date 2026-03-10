@@ -30,8 +30,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/dashboard').then(r => { setData(r.data.data); setLoading(false); })
-       .catch(() => setLoading(false));
+    api.get('/dashboard')
+      .then(r => { setData(r.data.data); setLoading(false); })
+      .catch(err => {
+        // Log full error for easier debugging (network / CORS / auth failures)
+        console.error('Failed to load dashboard:', err?.response || err.message || err);
+        setLoading(false);
+        setData(null);
+      });
   }, []);
 
   if (loading) return <AppLayout title="Dashboard"><div className="loading-page"><div className="spinner" style={{width:32,height:32,borderWidth:3}} /></div></AppLayout>;
