@@ -17,6 +17,7 @@ const STMT_TYPES = [
   { id:'customer',        label:'Customer Statement',   color:'#16a34a', emoji:'🏢', api:'/customers',                         txnApi:(id,p)=>`/invoices?customerId=${id}&from=${p.from}&to=${p.to}&limit=200`,      pmtApi:(id,p)=>`/payments?partyId=${id}&from=${p.from}&to=${p.to}&limit=200` },
   { id:'vendor',          label:'Vendor Statement',     color:'#3b82f6', emoji:'🚚', api:'/vendors',                           txnApi:(id,p)=>`/purchases?vendorId=${id}&from=${p.from}&to=${p.to}&limit=200`,    pmtApi:(id,p)=>`/payments?partyId=${id}&from=${p.from}&to=${p.to}&limit=200` },
   { id:'director',        label:'Director Statement',   color:'#8b5cf6', emoji:'👔', api:'/parties?type=director&limit=100',   txnApi:(id,p)=>`/parties/${id}/transactions?from=${p.from}&to=${p.to}&limit=200` },
+  { id:'director_loan',   label:'Director Loan Ledger', color:'#dc2626', emoji:'🏦', api:'/parties?type=director&limit=100',   txnApi:(id,p)=>`/parties/${id}/transactions?from=${p.from}&to=${p.to}&limit=200` },
   { id:'employee',        label:'Employee Statement',   color:'#0ea5e9', emoji:'👤', api:'/parties?type=employee&limit=100',   txnApi:(id,p)=>`/parties/${id}/transactions?from=${p.from}&to=${p.to}&limit=200` },
   { id:'contractor',      label:'Contractor Statement', color:'#f97316', emoji:'🔧', api:'/parties?type=contractor&limit=100', txnApi:(id,p)=>`/parties/${id}/transactions?from=${p.from}&to=${p.to}&limit=200` },
 ];
@@ -87,7 +88,7 @@ export default function Reports() {
     try {
       const party = partyList.find(p => p._id === partyId);
       const params = { from, to };
-      const isPeople = ['director','employee','contractor'].includes(stmtType.id);
+      const isPeople = ['director','director_loan','employee','contractor'].includes(stmtType.id);
 
       let transactions = [], payments = [];
       const txnRes = await api.get(stmtType.txnApi(partyId, params));
@@ -103,11 +104,30 @@ export default function Reports() {
       // Build unified ledger
       const ledger = [];
       if (isPeople) {
-        transactions.forEach(t => ledger.push({
-          date: t.date, ref: t.reference || t._id?.slice(-6).toUpperCase(),
-          description: TXN_LABELS[t.type] || t.type, debit: 0, credit: t.amount || 0,
-          mode: t.paymentMode, raw: t,
-        }));
+        // For loan ledger — filter only loan transactions and assign DR/CR properly
+        const isLoanLedger = stmtType.id === 'director_loan';
+        const filtered = isLoanLedger
+          ? transactions.filter(t => ['director_loan','loan_repayment'].includes(t.type))
+          : transactions;
+
+        filtered.forEach(t => {
+          // Loan DR/CR logic:
+          // director_loan = Director gives money to company → Loan increases → CR (liability goes up)
+          // loan_repayment = Company pays back director → Loan decreases → DR (liability goes down)
+          const isLoanIn  = t.type === 'director_loan';
+          const isLoanOut = t.type === 'loan_repayment';
+
+          ledger.push({
+            date:        t.date,
+            ref:         t.reference || t._id?.slice(-6).toUpperCase(),
+            description: TXN_LABELS[t.type] || t.type,
+            debit:       isLoanLedger ? (isLoanOut ? t.amount || 0 : 0) : 0,
+            credit:      isLoanLedger ? (isLoanIn  ? t.amount || 0 : 0) : (t.amount || 0),
+            mode:        t.paymentMode,
+            bankAccount: t.bankAccountName || '',
+            raw:         t,
+          });
+        });
       } else {
         transactions.forEach(t => ledger.push({
           date: t.date || t.invoiceDate || t.billDate,
@@ -227,7 +247,8 @@ function PartyStatement({ data, from, to, onPrint }) {
   const TYPE_META = {
     customer:   { label:'Customer', color:'#16a34a', debitLabel:'Invoice Amount', creditLabel:'Payment Received' },
     vendor:     { label:'Vendor',   color:'#3b82f6', debitLabel:'Bill Amount',    creditLabel:'Payment Made' },
-    director:   { label:'Director', color:'#8b5cf6', debitLabel:'Amount',         creditLabel:'Amount' },
+    director:      { label:'Director',          color:'#8b5cf6', debitLabel:'Amount',      creditLabel:'Amount' },
+    director_loan: { label:'Director Loan',    color:'#dc2626', debitLabel:'Repaid (DR)',  creditLabel:'Loan Given (CR)' },
     employee:   { label:'Employee', color:'#0ea5e9', debitLabel:'Amount',         creditLabel:'Amount' },
     contractor: { label:'Contractor',color:'#f97316',debitLabel:'Amount',         creditLabel:'Amount' },
   };
@@ -253,9 +274,8 @@ function PartyStatement({ data, from, to, onPrint }) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'24px', paddingBottom:'20px', borderBottom:'2px solid #e2e8f0' }}>
           <div>
             <img src={logo} alt="Tesseract Flex Fuel" style={{ width:'180px', marginBottom:'6px', display:'block' }}/>
-            <div style={{ fontSize:'12px', color:'#6b7280' }}>Sustainable Biodiesel Manufacturer</div>
-            <div style={{ fontSize:'12px', color:'#6b7280' }}>Factory: Suncity Industrial Park, Haripura, Savli, Vadodara, Gujarat.</div>
-            <div style={{ fontSize:'12px', color:'#6b7280' }}>GSTIN: 24AAKCT4104F1ZO</div>
+            <div style={{ fontSize:'12px', color:'#6b7280' }}>Biodiesel Manufacturing · Vadodara, Gujarat</div>
+            <div style={{ fontSize:'12px', color:'#6b7280' }}>GSTIN: 24XXXXX1234X1Z5</div>
           </div>
           <div style={{ textAlign:'right' }}>
             <div style={{ fontSize:'18px', fontWeight:800, color: meta.color, textTransform:'uppercase', letterSpacing:'0.05em' }}>{meta.label} Statement</div>
@@ -286,6 +306,22 @@ function PartyStatement({ data, from, to, onPrint }) {
         </div>
 
         {/* Director-specific balance cards */}
+        {type === 'director_loan' && (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'16px', margin:'20px 0', padding:'16px', background:'#fff1f2', borderRadius:'10px', border:'1px solid #fecdd3' }}>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Total Loan Given</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color:'#dc2626', marginTop:'4px' }}>{fmt(data.rows.reduce((s,r)=>s+r.credit,0))}</div>
+            </div>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Total Repaid</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color:'#16a34a', marginTop:'4px' }}>{fmt(data.rows.reduce((s,r)=>s+r.debit,0))}</div>
+            </div>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Outstanding Balance</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color: data.party.loanOutstanding>0?'#dc2626':'#16a34a', marginTop:'4px' }}>{fmt(data.party.loanOutstanding)}</div>
+            </div>
+          </div>
+        )}
         {type === 'director' && (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'10px', marginBottom:'20px', background:'#f9fafb', border:'1px solid #e2e8f0', borderRadius:'10px', padding:'14px' }}>
             <div style={{ textAlign:'center' }}><div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Capital Invested</div><div style={{ fontSize:'16px', fontWeight:800, color:'#16a34a', marginTop:'4px' }}>{fmt(data.party.capitalContributed)}</div></div>
@@ -315,6 +351,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                   <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Reference</th>
                   <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Description</th>
                   {rows.some(r=>r.mode) && <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Mode</th>}
+                  {rows.some(r=>r.bankAccount) && <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Bank Account</th>}
                   <th style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Debit (DR)</th>
                   <th style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Credit (CR)</th>
                   <th style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Balance</th>
@@ -327,6 +364,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                     <td style={{ padding:'9px 12px', fontFamily:'monospace', fontSize:'11.5px', color:'#6b7280', fontWeight:600 }}>{r.ref || '—'}</td>
                     <td style={{ padding:'9px 12px', color:'#111827', fontWeight:500 }}>{r.description}</td>
                     {rows.some(rx=>rx.mode) && <td style={{ padding:'9px 12px', color:'#6b7280', textTransform:'uppercase', fontSize:'11px', fontWeight:600 }}>{r.mode || '—'}</td>}
+                    {rows.some(rx=>rx.bankAccount) && <td style={{ padding:'9px 12px', color:'#6b7280', fontSize:'12px' }}>{r.bankAccount || '—'}</td>}
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', color: r.debit>0 ? '#111827':'#d1d5db', fontWeight: r.debit>0?700:400 }}>{r.debit>0 ? fmt(r.debit) : '—'}</td>
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', color: r.credit>0 ? '#16a34a':'#d1d5db', fontWeight: r.credit>0?700:400 }}>{r.credit>0 ? fmt(r.credit) : '—'}</td>
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', fontWeight:700, color: r.balance>0?'#f97316': r.balance<0?'#16a34a':'#374151' }}>
