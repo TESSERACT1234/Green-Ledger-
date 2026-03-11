@@ -11,10 +11,11 @@ router.use(protect);
 // ── GET /payments ──────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const { type, partyId, from, to, page = 1, limit = 200 } = req.query;
+    const { type, partyId, bankAccount, from, to, page = 1, limit = 200 } = req.query;
     const filter = {};
-    if (type)    filter.type = type;
-    if (partyId) filter.partyId = partyId;
+    if (type)        filter.type = type;
+    if (partyId)     filter.partyId = partyId;
+    if (bankAccount) filter.bankAccount = bankAccount;
     if (from || to) {
       filter.paymentDate = {};
       if (from) filter.paymentDate.$gte = new Date(from);
