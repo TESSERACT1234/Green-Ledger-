@@ -38,17 +38,19 @@ const fmt = (n) => '₹' + (n||0).toLocaleString('en-IN', { minimumFractionDigit
 // ── Print styles injected once ─────────────────────────────────
 const PRINT_CSS = `
 @media print {
-  /* Hide everything except the printable area */
-  body > * { display: none !important; }
-  body     { margin: 0 !important; padding: 0 !important; background: white !important; }
+  /* Step 1: hide everything */
+  body * { visibility: hidden !important; }
 
-  /* Show only #printable — let it flow naturally across pages */
+  /* Step 2: show printable and all its children */
+  #printable, #printable * { visibility: visible !important; }
+
+  /* Step 3: position printable at top, flowing normally (NOT fixed) */
   #printable {
-    display: block !important;
-    position: static !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
     width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    padding: 20px !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -56,29 +58,21 @@ const PRINT_CSS = `
     font-size: 11px !important;
   }
 
-  /* Allow table to break across pages */
-  table       { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto !important; }
-  tr          { page-break-inside: avoid !important; page-break-after: auto !important; }
-  thead       { display: table-header-group !important; }  /* repeat header on every page */
-  tfoot       { display: table-footer-group !important; }
+  /* Multi-page table support */
+  table  { width: 100% !important; border-collapse: collapse !important; }
+  thead  { display: table-header-group !important; }
+  tfoot  { display: table-footer-group !important; }
+  tr     { page-break-inside: avoid !important; }
 
-  /* Keep header letterhead together — never break it */
-  .print-header { page-break-after: avoid !important; page-break-inside: avoid !important; }
-
-  /* Keep summary cards together */
+  /* Keep letterhead and summary together on one page */
+  .print-header  { page-break-after: avoid !important; page-break-inside: avoid !important; }
   .print-summary { page-break-after: avoid !important; page-break-inside: avoid !important; }
 
-  /* Don't break inside a table row */
-  td, th { page-break-inside: avoid !important; }
-
   /* Page settings */
-  @page {
-    size: A4 portrait;
-    margin: 1.5cm 1.2cm;
-  }
+  @page { size: A4 portrait; margin: 1.2cm; }
 
-  /* Hide print button and UI chrome */
-  button, .no-print { display: none !important; }
+  /* Hide buttons */
+  button { display: none !important; }
 }`;
 
 export default function Reports() {
@@ -433,6 +427,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                   <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Date</th>
                   <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Reference</th>
                   <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Description</th>
+                  {rows.some(r=>r.partyName) && <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Party</th>}
                   {rows.some(r=>r.mode) && <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Mode</th>}
                   {rows.some(r=>r.bankAccount) && <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Bank Account</th>}
                   <th style={{ padding:'10px 12px', textAlign:'right', fontWeight:700, color:'#374151', fontSize:'11px', textTransform:'uppercase', letterSpacing:'0.06em', borderBottom:'2px solid #e2e8f0' }}>Debit (DR)</th>
@@ -446,6 +441,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                     <td style={{ padding:'9px 12px', color:'#374151', whiteSpace:'nowrap' }}>{new Date(r.date).toLocaleDateString('en-IN')}</td>
                     <td style={{ padding:'9px 12px', fontFamily:'monospace', fontSize:'11.5px', color:'#6b7280', fontWeight:600 }}>{r.ref || '—'}</td>
                     <td style={{ padding:'9px 12px', color:'#111827', fontWeight:500 }}>{r.description}</td>
+                    {rows.some(rx=>rx.partyName) && <td style={{ padding:'9px 12px', color:'#374151', fontSize:'12px', fontWeight:600 }}>{r.partyName || '—'}</td>}
                     {rows.some(rx=>rx.mode) && <td style={{ padding:'9px 12px', color:'#6b7280', textTransform:'uppercase', fontSize:'11px', fontWeight:600 }}>{r.mode || '—'}</td>}
                     {rows.some(rx=>rx.bankAccount) && <td style={{ padding:'9px 12px', color:'#6b7280', fontSize:'12px' }}>{r.bankAccount || '—'}</td>}
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', color: r.debit>0 ? '#111827':'#d1d5db', fontWeight: r.debit>0?700:400 }}>{r.debit>0 ? fmt(r.debit) : '—'}</td>

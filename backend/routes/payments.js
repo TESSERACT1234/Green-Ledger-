@@ -182,15 +182,22 @@ router.get('/bank-statement', async (req, res) => {
       tds_deduction:'TDS Deduction',
     };
 
-    const MONEY_IN  = ['receipt','capital_investment','director_loan'];
+    const MONEY_IN = ['receipt','capital_investment','director_loan'];
+
+    // Fetch party names for party transactions
+    const Party    = require('../models/Party');
+    const partyIds = [...new Set(partyTxns.map(t => t.party?.toString()).filter(Boolean))];
+    const parties  = partyIds.length ? await Party.find({ _id: { $in: partyIds } }, 'name type') : [];
+    const partyMap = {};
+    parties.forEach(p => { partyMap[p._id.toString()] = p.name; });
 
     const rows = [
       ...payments.map(p => ({
         _id:         p._id,
         date:        p.paymentDate || p.createdAt,
         ref:         p.paymentNumber,
-        description: `${TXN_LABELS[p.type]||p.type} — ${p.partyName||''}`,
-        partyName:   p.partyName,
+        description: TXN_LABELS[p.type] || p.type,
+        partyName:   p.partyName || '',
         type:        p.type,
         amount:      p.amount,
         isIn:        p.type === 'receipt',
@@ -201,8 +208,8 @@ router.get('/bank-statement', async (req, res) => {
         _id:         t._id,
         date:        t.date || t.createdAt,
         ref:         t.reference || t._id.toString().slice(-6).toUpperCase(),
-        description: TXN_LABELS[t.type]||t.type,
-        partyName:   '',
+        description: TXN_LABELS[t.type] || t.type,
+        partyName:   partyMap[t.party?.toString()] || '',
         type:        t.type,
         amount:      t.netAmount || t.amount,
         isIn:        MONEY_IN.includes(t.type),
