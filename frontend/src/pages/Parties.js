@@ -579,9 +579,6 @@ export default function Parties() {
           </div>
         </div>
       )}
-    </AppLayout>
-  );
-}
 
       {/* ══ EDIT TRANSACTION MODAL ══ */}
       {editTxnModal && (
