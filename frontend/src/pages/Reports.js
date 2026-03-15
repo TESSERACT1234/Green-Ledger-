@@ -14,8 +14,8 @@ const REPORTS = [
 ];
 
 const STMT_TYPES = [
-  { id:'cash',            label:'Cash Statement',       color:'#92400e', emoji:'💵', api:'/bank',                              txnApi:(id,p)=>`/payments?bankAccount=${id}&from=${p.from}&to=${p.to}&limit=500` },
-  { id:'bank',            label:'Bank Statement',        color:'#0369a1', emoji:'🏦', api:'/bank',                              txnApi:(id,p)=>`/payments?bankAccount=${id}&from=${p.from}&to=${p.to}&limit=500` },
+  { id:'cash',            label:'Cash Statement',       color:'#92400e', emoji:'💵', api:'/bank',                              txnApi:(id,p)=>`/payments/bank-statement?bankAccountId=${id}&from=${p.from}&to=${p.to}` },
+  { id:'bank',            label:'Bank Statement',        color:'#0369a1', emoji:'🏦', api:'/bank',                              txnApi:(id,p)=>`/payments/bank-statement?bankAccountId=${id}&from=${p.from}&to=${p.to}` },
   { id:'customer',        label:'Customer Statement',   color:'#16a34a', emoji:'🏢', api:'/customers',                         txnApi:(id,p)=>`/invoices?customerId=${id}&from=${p.from}&to=${p.to}&limit=200`,      pmtApi:(id,p)=>`/payments?partyId=${id}&from=${p.from}&to=${p.to}&limit=200` },
   { id:'vendor',          label:'Vendor Statement',     color:'#3b82f6', emoji:'🚚', api:'/vendors',                           txnApi:(id,p)=>`/purchases?vendorId=${id}&from=${p.from}&to=${p.to}&limit=200`,    pmtApi:(id,p)=>`/payments?partyId=${id}&from=${p.from}&to=${p.to}&limit=200` },
   { id:'director',        label:'Director Statement',   color:'#8b5cf6', emoji:'👔', api:'/parties?type=director&limit=100',   txnApi:(id,p)=>`/parties/${id}/transactions?from=${p.from}&to=${p.to}&limit=200` },
@@ -107,16 +107,15 @@ export default function Reports() {
       // Build unified ledger
       const ledger = [];
       if (isCash) {
-        // Cash statement — show all payments through selected cash account
+        // Bank/Cash statement — response already normalised by bank-statement endpoint
         transactions.forEach(t => {
-          const isIn = t.type === 'receipt';
           ledger.push({
-            date:        t.paymentDate || t.date,
-            ref:         t.paymentNumber || t._id?.slice(-6).toUpperCase(),
-            description: `${TXN_LABELS[t.type]||t.type} — ${t.partyName||''}`,
-            debit:       isIn  ? t.amount || 0 : 0,   // cash coming IN
-            credit:      !isIn ? t.amount || 0 : 0,   // cash going OUT
-            mode:        'cash',
+            date:        t.date,
+            ref:         t.ref || t._id?.slice(-6).toUpperCase(),
+            description: t.description || t.type,
+            debit:       t.isIn  ? t.amount || 0 : 0,   // money IN  → debit (increases balance)
+            credit:      !t.isIn ? t.amount || 0 : 0,   // money OUT → credit (decreases balance)
+            mode:        t.mode,
             raw:         t,
           });
         });

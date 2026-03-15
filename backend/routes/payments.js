@@ -147,6 +147,74 @@ router.post('/', async (req, res) => {
   } catch(e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
+// ── GET /payments/bank-statement — all txns for a bank account ─
+router.get('/bank-statement', async (req, res) => {
+  try {
+    const { bankAccountId, from, to } = req.query;
+    if (!bankAccountId) return res.status(400).json({ success: false, message: 'bankAccountId required' });
+
+    const PartyTransaction = require('../models/PartyTransaction');
+    const dateFilter = {};
+    if (from) dateFilter.$gte = new Date(from);
+    if (to)   dateFilter.$lte = new Date(to);
+
+    const paymentFilter = { bankAccount: bankAccountId };
+    const partyFilter   = { bankAccountId };
+    if (from || to) {
+      paymentFilter.paymentDate  = dateFilter;
+      partyFilter.date           = dateFilter;
+    }
+
+    // Fetch from both collections
+    const [payments, partyTxns] = await Promise.all([
+      Payment.find(paymentFilter).sort({ paymentDate: -1 }).limit(1000),
+      PartyTransaction.find(partyFilter).sort({ date: -1 }).limit(1000),
+    ]);
+
+    // Normalise to common shape
+    const TXN_LABELS = {
+      receipt:'Receipt', payment:'Payment',
+      capital_investment:'Capital Investment', director_loan:'Director Loan',
+      loan_repayment:'Loan Repayment', drawings:'Drawings', profit_share:'Profit Share',
+      salary_payment:'Salary Payment', advance_given:'Advance Given',
+      advance_recovery:'Advance Recovery', contractor_payment:'Contractor Payment',
+      expense_payment:'Expense Payment', reimbursement:'Reimbursement',
+      tds_deduction:'TDS Deduction',
+    };
+
+    const MONEY_IN  = ['receipt','capital_investment','director_loan'];
+
+    const rows = [
+      ...payments.map(p => ({
+        _id:         p._id,
+        date:        p.paymentDate || p.createdAt,
+        ref:         p.paymentNumber,
+        description: `${TXN_LABELS[p.type]||p.type} — ${p.partyName||''}`,
+        partyName:   p.partyName,
+        type:        p.type,
+        amount:      p.amount,
+        isIn:        p.type === 'receipt',
+        mode:        p.mode,
+        source:      'payment',
+      })),
+      ...partyTxns.map(t => ({
+        _id:         t._id,
+        date:        t.date || t.createdAt,
+        ref:         t.reference || t._id.toString().slice(-6).toUpperCase(),
+        description: TXN_LABELS[t.type]||t.type,
+        partyName:   '',
+        type:        t.type,
+        amount:      t.netAmount || t.amount,
+        isIn:        MONEY_IN.includes(t.type),
+        mode:        t.paymentMode,
+        source:      'party',
+      })),
+    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    res.json({ success: true, data: rows });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── GET /payments/:id — MUST be last ──────────────────────────
 router.get('/:id', async (req, res) => {
   try {
