@@ -83,7 +83,7 @@ export default function Payments() {
 
   const fetchPayments = async () => {
     try {
-      const r = await api.get('/payments', { params: { limit: 200 } });
+      const r = await api.get('/payments', { params: { limit: 1000 } });
       setPayments(r.data.data);
     } catch { toast.error('Failed to load payments'); }
     finally { setLoading(false); }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../components/layout/AppLayout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { Plus, X, Search, Edit2, Eye, CreditCard, ChevronRight, Users, Briefcase, Wrench, Receipt } from 'lucide-react';
+import { Plus, X, Search, Edit2, Eye, CreditCard, ChevronRight, Users, Briefcase, Wrench, Receipt, Pencil, Trash2 } from 'lucide-react';
 
 // ── Type config ──────────────────────────────────────────────────
 const TYPE_CONFIG = {
@@ -88,6 +88,9 @@ export default function Parties() {
   const [form, setForm]               = useState(emptyForms.director);
   const [editing, setEditing]         = useState(null);
   const [saving, setSaving]           = useState(false);
+  const [editTxnModal, setEditTxnModal]     = useState(null);   // transaction to edit
+  const [deleteTxnConfirm, setDeleteTxnConfirm] = useState(null); // transaction to delete
+  const [editTxnForm, setEditTxnForm]       = useState({});
   const [txnForm, setTxnForm]         = useState({ type:'', amount:0, date:new Date().toISOString().slice(0,10), month:new Date().toISOString().slice(0,7), description:'', paymentMode:'bank', reference:'', tdsAmount:0 });
 
   const cfg = TYPE_CONFIG[activeTab];
@@ -146,6 +149,49 @@ export default function Parties() {
     finally { setSaving(false); }
   };
 
+  // ── Edit transaction ────────────────────────────────────────
+  const openEditTxn = (txn, partyId) => {
+    setEditTxnForm({
+      partyId,
+      amount:      txn.amount,
+      date:        txn.date?.slice(0,10) || new Date().toISOString().slice(0,10),
+      paymentMode: txn.paymentMode || 'bank',
+      reference:   txn.reference || '',
+      description: txn.description || '',
+      tdsAmount:   txn.tdsAmount || 0,
+    });
+    setEditTxnModal(txn);
+  };
+
+  const handleEditTxn = async (e) => {
+    e.preventDefault(); setSaving(true);
+    try {
+      await api.put(`/parties/${editTxnForm.partyId}/transactions/${editTxnModal._id}`, editTxnForm);
+      toast.success('Transaction updated!');
+      setEditTxnModal(null);
+      fetchParties();
+      if (detailModal) {
+        const r = await api.get(`/parties/${editTxnForm.partyId}`);
+        setDetailModal(r.data);
+      }
+    } catch(e) { toast.error(e.response?.data?.message || 'Error updating'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDeleteTxn = async () => {
+    try {
+      const { partyId, _id } = deleteTxnConfirm;
+      await api.delete(`/parties/${partyId}/transactions/${_id}`);
+      toast.success('Transaction deleted and balances reversed.');
+      setDeleteTxnConfirm(null);
+      fetchParties();
+      if (detailModal) {
+        const r = await api.get(`/parties/${partyId}`);
+        setDetailModal(r.data);
+      }
+    } catch(e) { toast.error(e.response?.data?.message || 'Error deleting'); }
+  };
+
   const TXN_LABELS = {
     salary_payment:'Salary', advance_given:'Advance Given', advance_recovery:'Advance Recovery',
     drawings:'Drawings', profit_share:'Profit Share', contractor_payment:'Payment',
@@ -191,7 +237,6 @@ export default function Parties() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '14px', marginBottom: '20px' }}>
         <StatCard icon="💰" label="Director Capital Invested" value={`₹${(summary.totalCapital||0).toLocaleString('en-IN')}`} color="#16a34a" />
         <StatCard icon="🏦" label="Director Loans Outstanding" value={`₹${(summary.totalLoanOutstanding||0).toLocaleString('en-IN')}`} color="#ef4444" />
-        <StatCard icon="📤" label="Total Director Drawings" value={`₹${(summary.totalDrawings||0).toLocaleString('en-IN')}`} color="#8b5cf6" />
         <StatCard icon="🧾" label="Expenses This Month" value={`₹${(summary.expenseThisMonth||0).toLocaleString('en-IN')}`} color="#ef4444" />
       </div>
 
@@ -502,7 +547,7 @@ export default function Parties() {
               {detailModal.transactions?.length === 0
                 ? <div style={{ textAlign:'center', padding:'24px', color:'var(--gray-400)', fontSize:'13px' }}>No transactions yet</div>
                 : <table className="data-table">
-                    <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>TDS</th><th>Net</th><th>Mode</th><th>Reference</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>TDS</th><th>Net</th><th>Mode</th><th>Reference</th><th></th></tr></thead>
                     <tbody>
                       {detailModal.transactions.map(t=>(
                         <tr key={t._id}>
@@ -513,6 +558,18 @@ export default function Parties() {
                           <td style={{ textAlign:'right', fontWeight:700, color:'var(--primary)' }}>₹{(t.netAmount||t.amount)?.toLocaleString('en-IN')}</td>
                           <td><span className="badge badge-gray" style={{ textTransform:'uppercase', fontSize:'10px' }}>{t.paymentMode}</span></td>
                           <td className="td-mono" style={{ color:'var(--gray-500)', fontSize:'12px' }}>{t.reference||'—'}</td>
+                          <td>
+                            <div style={{display:'flex',gap:'5px'}}>
+                              <button onClick={()=>openEditTxn(t, detailModal.data._id)} title="Edit"
+                                style={{padding:'4px 7px',background:'#eff6ff',border:'none',borderRadius:'5px',cursor:'pointer',color:'#3b82f6',display:'flex',alignItems:'center'}}>
+                                <Pencil size={12}/>
+                              </button>
+                              <button onClick={()=>setDeleteTxnConfirm({...t, partyId: detailModal.data._id})} title="Delete"
+                                style={{padding:'4px 7px',background:'#fff1f2',border:'none',borderRadius:'5px',cursor:'pointer',color:'#ef4444',display:'flex',alignItems:'center'}}>
+                                <Trash2 size={12}/>
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -525,6 +582,105 @@ export default function Parties() {
     </AppLayout>
   );
 }
+
+      {/* ══ EDIT TRANSACTION MODAL ══ */}
+      {editTxnModal && (
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditTxnModal(null)}>
+          <div className="modal modal-md">
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">✏️ Edit Transaction</h3>
+                <div style={{fontSize:'12px',color:'var(--gray-400)',marginTop:'3px'}}>
+                  {TXN_LABELS[editTxnModal.type]||editTxnModal.type}
+                </div>
+              </div>
+              <button onClick={()=>setEditTxnModal(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)'}}><X size={18}/></button>
+            </div>
+            <form onSubmit={handleEditTxn}>
+              <div className="modal-body">
+                <div style={{background:'#fff8f0',border:'1px solid #fed7aa',borderRadius:'8px',padding:'10px 14px',marginBottom:'16px',fontSize:'12.5px',color:'#92400e',fontWeight:600}}>
+                  ⚠️ Editing will reverse old bank & party balances and apply new values automatically.
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Amount (₹) <span className="req">*</span></label>
+                    <input required type="number" min="0.01" step="0.01" className="form-input"
+                      value={editTxnForm.amount} onChange={e=>setEditTxnForm(f=>({...f,amount:e.target.value}))}/>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Date</label>
+                    <input type="date" className="form-input"
+                      value={editTxnForm.date} onChange={e=>setEditTxnForm(f=>({...f,date:e.target.value}))}/>
+                  </div>
+                </div>
+                {parseFloat(editTxnForm.tdsAmount) > 0 && (
+                  <div className="form-group">
+                    <label className="form-label">TDS Amount (₹)</label>
+                    <input type="number" min="0" step="0.01" className="form-input"
+                      value={editTxnForm.tdsAmount} onChange={e=>setEditTxnForm(f=>({...f,tdsAmount:e.target.value}))}/>
+                  </div>
+                )}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Payment Mode</label>
+                    <select className="form-select" value={editTxnForm.paymentMode} onChange={e=>setEditTxnForm(f=>({...f,paymentMode:e.target.value}))}>
+                      <option value="bank">Bank Transfer</option>
+                      <option value="cash">Cash</option>
+                      <option value="upi">UPI</option>
+                      <option value="cheque">Cheque</option>
+                      <option value="neft">NEFT</option>
+                      <option value="rtgs">RTGS</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Reference</label>
+                    <input className="form-input" value={editTxnForm.reference}
+                      onChange={e=>setEditTxnForm(f=>({...f,reference:e.target.value}))}/>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea className="form-textarea" rows={2} value={editTxnForm.description}
+                    onChange={e=>setEditTxnForm(f=>({...f,description:e.target.value}))}/>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={()=>setEditTxnModal(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving?<span className="spinner"/>:<><Pencil size={13}/> Save Changes</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ DELETE TRANSACTION CONFIRM ══ */}
+      {deleteTxnConfirm && (
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteTxnConfirm(null)}>
+          <div className="modal" style={{maxWidth:'420px'}}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{color:'#ef4444'}}>🗑️ Delete Transaction</h3>
+              <button onClick={()=>setDeleteTxnConfirm(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)'}}><X size={18}/></button>
+            </div>
+            <div className="modal-body">
+              <p style={{fontSize:'14px',color:'var(--gray-700)',marginBottom:'12px'}}>
+                Delete <strong>{TXN_LABELS[deleteTxnConfirm.type]||deleteTxnConfirm.type}</strong> of <strong>₹{deleteTxnConfirm.amount?.toLocaleString('en-IN')}</strong>?
+              </p>
+              <div style={{background:'#f0fdf4',border:'1px solid #86efac',borderRadius:'8px',padding:'12px',fontSize:'13px',color:'#14532d',fontWeight:600}}>
+                ✅ Party balances and bank balance will be automatically reversed.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={()=>setDeleteTxnConfirm(null)}>Cancel</button>
+              <button onClick={handleDeleteTxn}
+                style={{background:'#ef4444',color:'white',border:'none',padding:'8px 20px',borderRadius:'8px',fontFamily:'inherit',fontWeight:700,fontSize:'13px',cursor:'pointer'}}>
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 function StatCard({ icon, label, value, color }) {
   return (

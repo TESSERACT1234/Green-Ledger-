@@ -32,11 +32,11 @@ exports.getParty = async (req, res) => {
     if (!party) return res.status(404).json({ success: false, message: 'Party not found.' });
 
     const transactions = await PartyTransaction.find({ party: party._id })
-      .sort({ date: -1 }).limit(20)
+      .sort({ date: -1 }).limit(500)   // fetch up to 500 transactions
       .populate('createdBy', 'name');
 
     const summary = await PartyTransaction.aggregate([
-      { $match: { party: party._id, status: 'paid' } },
+      { $match: { party: party._id } },  // removed status filter — fetch all
       { $group: { _id: '$type', total: { $sum: '$amount' }, count: { $sum: 1 } } }
     ]);
 
@@ -72,7 +72,7 @@ exports.deleteParty = async (req, res) => {
 // ── GET transactions for a party ──────────────────────────────
 exports.getTransactions = async (req, res) => {
   try {
-    const { from, to, type, page = 1, limit = 50 } = req.query;
+    const { from, to, type, page = 1, limit = 500 } = req.query;
     const filter = { party: req.params.id };
     if (type) filter.type = type;
     if (from || to) {
@@ -210,4 +210,55 @@ exports.deleteTransaction = async (req, res) => {
     await PartyTransaction.findByIdAndDelete(req.params.txnId);
     res.json({ success: true, message: 'Transaction deleted and balances reversed.' });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+};
+
+// ── EDIT party transaction — reverse old, apply new ───────────
+exports.editTransaction = async (req, res) => {
+  try {
+    const PartyTransaction = require('../models/PartyTransaction');
+    const BankAccount      = require('../models/BankAccount');
+
+    const txn = await PartyTransaction.findById(req.params.txnId);
+    if (!txn) return res.status(404).json({ success: false, message: 'Transaction not found' });
+
+    const { amount, date, paymentMode, reference, description, tdsAmount } = req.body;
+    const oldAmount = txn.amount;
+    const newAmount = parseFloat(amount) || oldAmount;
+    const diff      = newAmount - oldAmount;
+
+    // Update party balance fields by the difference
+    const inc = {};
+    if (diff !== 0) {
+      if (txn.type === 'capital_investment') inc.capitalContributed = diff;
+      if (txn.type === 'director_loan')      { inc.loanGiven = diff; inc.loanOutstanding = diff; }
+      if (txn.type === 'loan_repayment')     { inc.loanRepaid = diff; inc.loanOutstanding = -diff; }
+      if (txn.type === 'drawings')           inc.drawingsAccount = diff;
+      if (txn.type === 'salary_payment')     inc.totalSalaryPaid = diff;
+      if (txn.type === 'advance_given')      inc.advanceOutstanding = diff;
+      if (txn.type === 'advance_recovery')   inc.advanceOutstanding = -diff;
+    }
+    if (Object.keys(inc).length > 0) {
+      await Party.findByIdAndUpdate(req.params.id, { $inc: inc });
+    }
+
+    // Update bank balance by the difference
+    if (txn.bankAccountId && diff !== 0) {
+      const isMoneyIn = ['capital_investment','director_loan'].includes(txn.type);
+      const bankDiff  = isMoneyIn ? diff : -diff;
+      await BankAccount.findByIdAndUpdate(txn.bankAccountId, { $inc: { currentBalance: bankDiff } });
+    }
+
+    // Update transaction
+    const updated = await PartyTransaction.findByIdAndUpdate(req.params.txnId, {
+      amount: newAmount,
+      netAmount: newAmount - (parseFloat(tdsAmount) || txn.tdsAmount || 0),
+      tdsAmount: parseFloat(tdsAmount) || txn.tdsAmount || 0,
+      date: date || txn.date,
+      paymentMode: paymentMode || txn.paymentMode,
+      reference: reference || txn.reference,
+      description: description || txn.description,
+    }, { new: true });
+
+    res.json({ success: true, data: updated });
+  } catch(e) { res.status(400).json({ success: false, message: e.message }); }
 };
