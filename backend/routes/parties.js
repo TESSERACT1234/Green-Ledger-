@@ -12,6 +12,7 @@ router.get('/:id',               ctrl.getParty);
 router.put('/:id',               ctrl.updateParty);
 router.delete('/:id',            adminOnly, ctrl.deleteParty);
 router.get('/:id/transactions',  ctrl.getTransactions);
-router.post('/:id/transactions', ctrl.createTransaction);
+router.post('/:id/transactions',          ctrl.createTransaction);
+router.delete('/:id/transactions/:txnId', ctrl.deleteTransaction);
 
 module.exports = router;

@@ -156,3 +156,54 @@ router.get('/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+// ── PUT /payments/:id — edit a payment ────────────────────────
+router.put('/:id', async (req, res) => {
+  try {
+    const old = await Payment.findById(req.params.id);
+    if (!old) return res.status(404).json({ success: false, message: 'Payment not found' });
+
+    const { bankAccountId, amount, type, ...rest } = req.body;
+
+    // Reverse old bank effect
+    if (old.bankAccount) {
+      const oldDelta = old.type === 'receipt' ? -old.amount : old.amount;
+      await BankAccount.findByIdAndUpdate(old.bankAccount, { $inc: { currentBalance: oldDelta } });
+    }
+
+    // Apply new bank effect
+    const newBankId = bankAccountId || old.bankAccount;
+    const newAmount = amount || old.amount;
+    const newType   = type || old.type;
+    if (newBankId) {
+      const newDelta = newType === 'receipt' ? newAmount : -newAmount;
+      await BankAccount.findByIdAndUpdate(newBankId, { $inc: { currentBalance: newDelta } });
+    }
+
+    const updated = await Payment.findByIdAndUpdate(req.params.id, {
+      ...rest,
+      amount: newAmount,
+      type:   newType,
+      bankAccount: newBankId,
+    }, { new: true });
+
+    res.json({ success: true, data: updated });
+  } catch(e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+// ── DELETE /payments/:id — delete + reverse bank balance ──────
+router.delete('/:id', async (req, res) => {
+  try {
+    const pay = await Payment.findById(req.params.id);
+    if (!pay) return res.status(404).json({ success: false, message: 'Payment not found' });
+
+    // Reverse bank balance
+    if (pay.bankAccount) {
+      const delta = pay.type === 'receipt' ? -pay.amount : pay.amount;
+      await BankAccount.findByIdAndUpdate(pay.bankAccount, { $inc: { currentBalance: delta } });
+    }
+
+    await Payment.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Payment deleted and bank balance reversed.' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});

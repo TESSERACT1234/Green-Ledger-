@@ -124,6 +124,8 @@ exports.createTransaction = async (req, res) => {
     // Update BankAccount balance if bankAccountId provided
     if (txn.bankAccountId) {
       const BankAccount = require('../models/BankAccount');
+      // isMoneyIn = capital_investment / director_loan → bank goes UP
+      // everything else (salary, drawings, contractor, expense etc.) → bank goes DOWN
       const bankInc = isMoneyIn ? txn.amount : -(txn.netAmount || txn.amount);
       await BankAccount.findByIdAndUpdate(txn.bankAccountId, { $inc: { currentBalance: bankInc } });
     }
@@ -170,4 +172,42 @@ exports.getSummary = async (req, res) => {
       }
     });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+};
+
+// ── DELETE party transaction — reverse party balances + bank ──
+exports.deleteTransaction = async (req, res) => {
+  try {
+    const PartyTransaction = require('../models/PartyTransaction');
+    const BankAccount      = require('../models/BankAccount');
+
+    const txn = await PartyTransaction.findById(req.params.txnId);
+    if (!txn) return res.status(404).json({ success: false, message: 'Transaction not found' });
+
+    const party = await Party.findById(req.params.id);
+    if (!party) return res.status(404).json({ success: false, message: 'Party not found' });
+
+    // Reverse party balance fields
+    const inc = {};
+    if (txn.type === 'capital_investment') inc.capitalContributed = -txn.amount;
+    if (txn.type === 'director_loan')      { inc.loanGiven = -txn.amount; inc.loanOutstanding = -txn.amount; }
+    if (txn.type === 'loan_repayment')     { inc.loanRepaid = -txn.amount; inc.loanOutstanding = txn.amount; }
+    if (txn.type === 'drawings')           inc.drawingsAccount = -txn.amount;
+    if (txn.type === 'salary_payment')     inc.totalSalaryPaid = -(txn.amount || 0);
+    if (txn.type === 'advance_given')      inc.advanceOutstanding = -(txn.amount || 0);
+    if (txn.type === 'advance_recovery')   inc.advanceOutstanding = (txn.amount || 0);
+
+    if (Object.keys(inc).length > 0) {
+      await Party.findByIdAndUpdate(req.params.id, { $inc: inc });
+    }
+
+    // Reverse bank balance
+    if (txn.bankAccountId) {
+      const isMoneyIn = ['capital_investment','director_loan'].includes(txn.type);
+      const delta     = isMoneyIn ? -(txn.amount) : (txn.netAmount || txn.amount);
+      await BankAccount.findByIdAndUpdate(txn.bankAccountId, { $inc: { currentBalance: delta } });
+    }
+
+    await PartyTransaction.findByIdAndDelete(req.params.txnId);
+    res.json({ success: true, message: 'Transaction deleted and balances reversed.' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 };

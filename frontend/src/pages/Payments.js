@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../components/layout/AppLayout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { Plus, X, ArrowDownLeft, ArrowUpRight, Clock, CheckCircle } from 'lucide-react';
+import { Plus, X, ArrowDownLeft, ArrowUpRight, Clock, CheckCircle, Pencil, Trash2 } from 'lucide-react';
 import logo from '../assets/logo.js';
 
 // ── Config ─────────────────────────────────────────────────────
@@ -75,6 +75,9 @@ export default function Payments() {
   const [form, setForm]             = useState(emptyForm);
   const [settleForm, setSettleForm] = useState({ amount:'', bankAccountId:'', mode:'bank', reference:'' });
   const [saving, setSaving]         = useState(false);
+  const [editModal, setEditModal]   = useState(null);  // payment to edit
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // payment to delete
+  const [editForm, setEditForm]     = useState({});
   const [loading, setLoading]       = useState(true);
   const [filterType, setFilterType] = useState('');
 
@@ -198,6 +201,41 @@ export default function Payments() {
       fetchPending();
     } catch(e) { toast.error(e.response?.data?.message || 'Error recording payment'); }
     finally { setSaving(false); }
+  };
+
+  // ── Edit payment ────────────────────────────────────────────
+  const openEdit = (p) => {
+    setEditForm({
+      amount:        p.amount,
+      paymentDate:   p.paymentDate?.slice(0,10) || new Date().toISOString().slice(0,10),
+      mode:          p.mode || 'bank',
+      reference:     p.reference || '',
+      description:   p.description || '',
+      bankAccountId: p.bankAccount || '',
+    });
+    setEditModal(p);
+  };
+
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.put(`/payments/${editModal._id}`, editForm);
+      toast.success('Payment updated! Bank balance adjusted.');
+      setEditModal(null);
+      fetchPayments();
+    } catch(e) { toast.error(e.response?.data?.message || 'Error updating payment'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/payments/${deleteConfirm._id}`);
+      toast.success('Payment deleted and bank balance reversed.');
+      setDeleteConfirm(null);
+      fetchPayments();
+      fetchPending();
+    } catch(e) { toast.error(e.response?.data?.message || 'Error deleting payment'); }
   };
 
   const totalIn  = payments.filter(p=>p.type==='receipt').reduce((s,p)=>s+(p.amount||0),0);
@@ -359,6 +397,18 @@ export default function Payments() {
                           </td>
                           <td><span className="badge badge-gray" style={{textTransform:'uppercase',fontSize:'10px'}}>{p.mode||p.paymentMode||'—'}</span></td>
                           <td className="td-mono" style={{color:'var(--gray-400)',fontSize:'11.5px'}}>{p.reference||'—'}</td>
+                          <td>
+                            <div style={{display:'flex',gap:'6px'}}>
+                              <button onClick={()=>openEdit(p)} title="Edit"
+                                style={{padding:'5px 8px',background:'#eff6ff',border:'none',borderRadius:'6px',cursor:'pointer',color:'#3b82f6',display:'flex',alignItems:'center'}}>
+                                <Pencil size={13}/>
+                              </button>
+                              <button onClick={()=>setDeleteConfirm(p)} title="Delete"
+                                style={{padding:'5px 8px',background:'#fff1f2',border:'none',borderRadius:'6px',cursor:'pointer',color:'#ef4444',display:'flex',alignItems:'center'}}>
+                                <Trash2 size={13}/>
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })
@@ -452,6 +502,100 @@ export default function Payments() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ EDIT PAYMENT MODAL ══ */}
+      {editModal && (
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditModal(null)}>
+          <div className="modal modal-md">
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">✏️ Edit Payment</h3>
+                <div style={{fontSize:'12px',color:'var(--gray-400)',marginTop:'3px'}}>
+                  {editModal.paymentNumber} · {editModal.partyName}
+                </div>
+              </div>
+              <button onClick={()=>setEditModal(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)'}}><X size={18}/></button>
+            </div>
+            <form onSubmit={handleEdit}>
+              <div className="modal-body">
+                <div style={{background:'#fff8f0',border:'1px solid #fed7aa',borderRadius:'8px',padding:'10px 14px',marginBottom:'16px',fontSize:'12.5px',color:'#92400e',fontWeight:600}}>
+                  ⚠️ Editing will reverse the old bank effect and apply the new one automatically.
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Amount (₹) <span className="req">*</span></label>
+                    <input required type="number" min="0.01" step="0.01" className="form-input"
+                      value={editForm.amount} onChange={e=>setEditForm(f=>({...f,amount:e.target.value}))}/>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Date</label>
+                    <input type="date" className="form-input"
+                      value={editForm.paymentDate} onChange={e=>setEditForm(f=>({...f,paymentDate:e.target.value}))}/>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">🏦 Bank Account</label>
+                  <select className="form-select" value={editForm.bankAccountId} onChange={e=>setEditForm(f=>({...f,bankAccountId:e.target.value}))}>
+                    <option value="">No change</option>
+                    {bankAccounts.map(b=><option key={b._id} value={b._id}>{b.accountName} — {b.bankName}</option>)}
+                  </select>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Payment Mode</label>
+                    <select className="form-select" value={editForm.mode} onChange={e=>setEditForm(f=>({...f,mode:e.target.value}))}>
+                      <option value="bank">Bank Transfer</option><option value="cash">Cash</option>
+                      <option value="upi">UPI</option><option value="cheque">Cheque</option>
+                      <option value="neft">NEFT</option><option value="rtgs">RTGS</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Reference / UTR</label>
+                    <input className="form-input" value={editForm.reference} onChange={e=>setEditForm(f=>({...f,reference:e.target.value}))}/>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea className="form-textarea" rows={2} value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))}/>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={()=>setEditModal(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving?<span className="spinner"/>:<><Pencil size={13}/> Save Changes</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ DELETE CONFIRM MODAL ══ */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteConfirm(null)}>
+          <div className="modal" style={{maxWidth:'420px'}}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{color:'#ef4444'}}>🗑️ Delete Payment</h3>
+              <button onClick={()=>setDeleteConfirm(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)'}}><X size={18}/></button>
+            </div>
+            <div className="modal-body">
+              <p style={{fontSize:'14px',color:'var(--gray-700)',marginBottom:'12px'}}>
+                Are you sure you want to delete <strong>{deleteConfirm.paymentNumber}</strong>?
+              </p>
+              <div style={{background:'#f0fdf4',border:'1px solid #86efac',borderRadius:'8px',padding:'12px',fontSize:'13px',color:'#14532d',fontWeight:600}}>
+                ✅ Bank balance will be automatically reversed by ₹{(deleteConfirm.amount||0).toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={()=>setDeleteConfirm(null)}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleDelete}
+                style={{background:'#ef4444',color:'white',border:'none',padding:'8px 20px',borderRadius:'8px',fontFamily:'inherit',fontWeight:700,fontSize:'13px',cursor:'pointer'}}>
+                Yes, Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
