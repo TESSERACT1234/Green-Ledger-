@@ -38,10 +38,47 @@ const fmt = (n) => '₹' + (n||0).toLocaleString('en-IN', { minimumFractionDigit
 // ── Print styles injected once ─────────────────────────────────
 const PRINT_CSS = `
 @media print {
-  body * { visibility: hidden !important; }
-  #printable, #printable * { visibility: visible !important; }
-  #printable { position: fixed; top:0; left:0; width:100%; padding:24px; background:white; }
-  @page { margin: 1.2cm; size: A4; }
+  /* Hide everything except the printable area */
+  body > * { display: none !important; }
+  body     { margin: 0 !important; padding: 0 !important; background: white !important; }
+
+  /* Show only #printable — let it flow naturally across pages */
+  #printable {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    font-size: 11px !important;
+  }
+
+  /* Allow table to break across pages */
+  table       { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto !important; }
+  tr          { page-break-inside: avoid !important; page-break-after: auto !important; }
+  thead       { display: table-header-group !important; }  /* repeat header on every page */
+  tfoot       { display: table-footer-group !important; }
+
+  /* Keep header letterhead together — never break it */
+  .print-header { page-break-after: avoid !important; page-break-inside: avoid !important; }
+
+  /* Keep summary cards together */
+  .print-summary { page-break-after: avoid !important; page-break-inside: avoid !important; }
+
+  /* Don't break inside a table row */
+  td, th { page-break-inside: avoid !important; }
+
+  /* Page settings */
+  @page {
+    size: A4 portrait;
+    margin: 1.5cm 1.2cm;
+  }
+
+  /* Hide print button and UI chrome */
+  button, .no-print { display: none !important; }
 }`;
 
 export default function Reports() {
@@ -160,14 +197,17 @@ export default function Reports() {
       }
       ledger.sort((a,b) => new Date(a.date) - new Date(b.date));
 
-      // Running balance
-      let bal = 0;
+      // Running balance — start from opening balance for bank/cash accounts
+      const openingBal = party?.openingBalance || 0;  // use opening balance for all bank/cash accounts
+      let bal = openingBal;
       const rows = ledger.map(r => {
         bal += (r.debit - r.credit);
         return { ...r, balance: bal };
       });
 
-      setStmtData({ party, rows, closingBalance: bal, type: stmtType.id });
+      // For bank/cash: use the actual currentBalance from the account as the true closing balance
+      const closingBal = isCash ? (party?.currentBalance || bal) : bal;
+      setStmtData({ party, rows, closingBalance: closingBal, openingBalance: openingBal, type: stmtType.id });
     } catch(e) { toast.error('Failed to load statement: ' + (e.response?.data?.message || e.message)); }
     finally { setStmtLoading(false); }
   };
@@ -260,7 +300,7 @@ export default function Reports() {
 // PARTY STATEMENT
 // ─────────────────────────────────────────────────────────────────────────────
 function PartyStatement({ data, from, to, onPrint }) {
-  const { party, rows, closingBalance, type } = data;
+  const { party, rows, closingBalance, openingBalance, type } = data;
 
   const totalDebit   = rows.reduce((s,r) => s + r.debit, 0);
   const totalCredit  = rows.reduce((s,r) => s + r.credit, 0);
@@ -330,18 +370,18 @@ function PartyStatement({ data, from, to, onPrint }) {
 
         {/* Director-specific balance cards */}
         {(type === 'cash' || type === 'bank') && (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px', margin:'20px 0', padding:'16px', background: type==='bank'?'#eff6ff':'#fffbeb', borderRadius:'10px', border:`1px solid ${type==='bank'?'#bfdbfe':'#fde68a'}` }}>
+          <div className="print-summary" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px', margin:'20px 0', padding:'16px', background: type==='bank'?'#eff6ff':'#fffbeb', borderRadius:'10px', border:`1px solid ${type==='bank'?'#bfdbfe':'#fde68a'}` }}>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>{type==='bank'?'Opening Balance':'Opening Cash'}</div>
               <div style={{ fontSize:'16px', fontWeight:800, color:'#374151', marginTop:'4px' }}>{fmt(data.party?.openingBalance||0)}</div>
             </div>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>{type==='bank'?'Total Credits (IN)':'Total Cash In'}</div>
-              <div style={{ fontSize:'16px', fontWeight:800, color:'#16a34a', marginTop:'4px' }}>{fmt(data.rows.reduce((s,r)=>s+r.debit,0))}</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color:'#16a34a', marginTop:'4px' }}>{fmt(totalDebit)}</div>
             </div>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>{type==='bank'?'Total Debits (OUT)':'Total Cash Out'}</div>
-              <div style={{ fontSize:'16px', fontWeight:800, color:'#ef4444', marginTop:'4px' }}>{fmt(data.rows.reduce((s,r)=>s+r.credit,0))}</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color:'#ef4444', marginTop:'4px' }}>{fmt(totalCredit)}</div>
             </div>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Closing Balance</div>
@@ -350,7 +390,7 @@ function PartyStatement({ data, from, to, onPrint }) {
           </div>
         )}
         {type === 'director_loan' && (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'16px', margin:'20px 0', padding:'16px', background:'#fff1f2', borderRadius:'10px', border:'1px solid #fecdd3' }}>
+          <div className="print-summary" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'16px', margin:'20px 0', padding:'16px', background:'#fff1f2', borderRadius:'10px', border:'1px solid #fecdd3' }}>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Total Loan Given</div>
               <div style={{ fontSize:'16px', fontWeight:800, color:'#dc2626', marginTop:'4px' }}>{fmt(data.rows.reduce((s,r)=>s+r.credit,0))}</div>
@@ -366,7 +406,7 @@ function PartyStatement({ data, from, to, onPrint }) {
           </div>
         )}
         {type === 'director' && (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'10px', marginBottom:'20px', background:'#f9fafb', border:'1px solid #e2e8f0', borderRadius:'10px', padding:'14px' }}>
+          <div className="print-summary" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'10px', marginBottom:'20px', background:'#f9fafb', border:'1px solid #e2e8f0', borderRadius:'10px', padding:'14px' }}>
             <div style={{ textAlign:'center' }}><div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Capital Invested</div><div style={{ fontSize:'16px', fontWeight:800, color:'#16a34a', marginTop:'4px' }}>{fmt(data.party.capitalContributed)}</div></div>
             <div style={{ textAlign:'center' }}><div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Loan Outstanding</div><div style={{ fontSize:'16px', fontWeight:800, color: data.party.loanOutstanding>0?'#ef4444':'#6b7280', marginTop:'4px' }}>{fmt(data.party.loanOutstanding)}</div></div>
             <div style={{ textAlign:'center' }}><div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Total Drawings</div><div style={{ fontSize:'16px', fontWeight:800, color:'#8b5cf6', marginTop:'4px' }}>{fmt(data.party.drawingsAccount)}</div></div>
@@ -422,8 +462,8 @@ function PartyStatement({ data, from, to, onPrint }) {
                   <td style={{ padding:'12px' }}></td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px' }}>{fmt(totalDebit)}</td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px', color:'#86efac' }}>{fmt(totalCredit)}</td>
-                  <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:900, fontSize:'14px', color: closingBalance>0?'#fbbf24':'#86efac' }}>
-                    {fmt(Math.abs(closingBalance))} {closingBalance>0?'DR':'CR'}
+                  <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:900, fontSize:'14px', color: (type==='bank'||type==='cash')?'#0369a1': closingBalance>0?'#fbbf24':'#86efac' }}>
+                    {(type==='bank'||type==='cash') ? fmt(data.party?.currentBalance||0) : `${fmt(Math.abs(closingBalance))} ${closingBalance>0?'DR':'CR'}`}
                   </td>
                 </tr>
               </tfoot>
