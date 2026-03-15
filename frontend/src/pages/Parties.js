@@ -682,6 +682,10 @@ export default function Parties() {
         </div>
       )}
 
+    </AppLayout>
+  );
+}
+
 function StatCard({ icon, label, value, color }) {
   return (
     <div style={{ background:'white', border:'1px solid var(--gray-200)', borderRadius:'12px', padding:'16px', display:'flex', alignItems:'center', gap:'14px' }}>
