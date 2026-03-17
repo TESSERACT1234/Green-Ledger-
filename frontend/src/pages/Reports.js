@@ -144,6 +144,7 @@ export default function Reports() {
             date:        t.date,
             ref:         t.ref || t._id?.slice(-6).toUpperCase(),
             description: t.description || t.type,
+            partyName:   t.partyName || '',
             debit:       t.isIn  ? t.amount || 0 : 0,   // money IN  → debit (increases balance)
             credit:      !t.isIn ? t.amount || 0 : 0,   // money OUT → credit (decreases balance)
             mode:        t.mode,
@@ -191,17 +192,16 @@ export default function Reports() {
       }
       ledger.sort((a,b) => new Date(a.date) - new Date(b.date));
 
-      // Running balance — start from opening balance for bank/cash accounts
-      const openingBal = party?.openingBalance || 0;  // use opening balance for all bank/cash accounts
+      // Running balance — single source of truth
+      // opening balance only applies to bank/cash accounts
+      const openingBal = isCash ? (party?.openingBalance || 0) : 0;
       let bal = openingBal;
       const rows = ledger.map(r => {
         bal += (r.debit - r.credit);
         return { ...r, balance: bal };
       });
-
-      // For bank/cash: use the actual currentBalance from the account as the true closing balance
-      const closingBal = isCash ? (party?.currentBalance || bal) : bal;
-      setStmtData({ party, rows, closingBalance: closingBal, openingBalance: openingBal, type: stmtType.id });
+      // bal is now: openingBalance + all IN - all OUT = closing balance
+      setStmtData({ party, rows, closingBalance: bal, openingBalance: openingBal, type: stmtType.id });
     } catch(e) { toast.error('Failed to load statement: ' + (e.response?.data?.message || e.message)); }
     finally { setStmtLoading(false); }
   };
@@ -379,7 +379,7 @@ function PartyStatement({ data, from, to, onPrint }) {
             </div>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Closing Balance</div>
-              <div style={{ fontSize:'16px', fontWeight:800, color: type==='bank'?'#0369a1':'#92400e', marginTop:'4px' }}>{fmt(data.party?.currentBalance||0)}</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color: type==='bank'?'#0369a1':'#92400e', marginTop:'4px' }}>{fmt(Math.abs(closingBalance))}</div>
             </div>
           </div>
         )}
@@ -459,7 +459,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px' }}>{fmt(totalDebit)}</td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px', color:'#86efac' }}>{fmt(totalCredit)}</td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:900, fontSize:'14px', color: (type==='bank'||type==='cash')?'#0369a1': closingBalance>0?'#fbbf24':'#86efac' }}>
-                    {(type==='bank'||type==='cash') ? fmt(data.party?.currentBalance||0) : `${fmt(Math.abs(closingBalance))} ${closingBalance>0?'DR':'CR'}`}
+                    {fmt(Math.abs(closingBalance))} {closingBalance >= 0 ? 'DR' : 'CR'}
                   </td>
                 </tr>
               </tfoot>
