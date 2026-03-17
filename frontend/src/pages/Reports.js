@@ -305,7 +305,7 @@ function PartyStatement({ data, from, to, onPrint }) {
     director:      { label:'Director',          color:'#8b5cf6', debitLabel:'Amount',      creditLabel:'Amount' },
     director_loan: { label:'Director Loan',    color:'#dc2626', debitLabel:'Repaid (DR)',    creditLabel:'Loan Given (CR)' },
     cash:          { label:'Cash in Hand',    color:'#92400e', debitLabel:'Cash In (DR)',   creditLabel:'Cash Out (CR)' },
-    bank:          { label:'Bank Account',    color:'#0369a1', debitLabel:'Credit (IN)',    creditLabel:'Debit (OUT)' },
+    bank:          { label:'Bank Account',    color:'#0369a1', debitLabel:'Debit (OUT)',    creditLabel:'Credit (IN)' },
     employee:   { label:'Employee', color:'#0ea5e9', debitLabel:'Amount',         creditLabel:'Amount' },
     contractor: { label:'Contractor',color:'#f97316',debitLabel:'Amount',         creditLabel:'Amount' },
   };
