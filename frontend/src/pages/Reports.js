@@ -358,7 +358,7 @@ function PartyStatement({ data, from, to, onPrint }) {
           </div>
           <div style={{ background: closingBalance > 0 ? '#fff7ed':'#f0fdf4', border:`1px solid ${closingBalance>0?'#fed7aa':'#bbf7d0'}`, borderRadius:'8px', padding:'14px', borderLeft:`4px solid ${closingBalance>0?'#f97316':'#16a34a'}` }}>
             <div style={{ fontSize:'11px', fontWeight:700, color:'#6b7280', textTransform:'uppercase', marginBottom:'4px' }}>Closing Balance</div>
-            <div style={{ fontSize:'18px', fontWeight:800, color: closingBalance>0?'#f97316':'#16a34a' }}>{fmt(Math.abs(closingBalance))} {closingBalance>0?'DR':'CR'}</div>
+            <div style={{ fontSize:'18px', fontWeight:800, color: closingBalance>0?'#f97316':'#16a34a' }}>{fmt(Math.abs(closingBalance))} {(type==='bank'||type==='cash') ? (closingBalance>=0?'CR':'DR') : (closingBalance>0?'DR':'CR')}</div>
           </div>
         </div>
 
@@ -447,7 +447,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', color: r.debit>0 ? '#111827':'#d1d5db', fontWeight: r.debit>0?700:400 }}>{r.debit>0 ? fmt(r.debit) : '—'}</td>
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', color: r.credit>0 ? '#16a34a':'#d1d5db', fontWeight: r.credit>0?700:400 }}>{r.credit>0 ? fmt(r.credit) : '—'}</td>
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', fontWeight:700, color: r.balance>0?'#f97316': r.balance<0?'#16a34a':'#374151' }}>
-                      {fmt(Math.abs(r.balance))} {r.balance>0?'DR':r.balance<0?'CR':''}
+                      {fmt(Math.abs(r.balance))} {(type==='bank'||type==='cash') ? (r.balance>=0?'CR':'DR') : (r.balance>0?'DR':r.balance<0?'CR':'')}
                     </td>
                   </tr>
                 ))}
@@ -459,7 +459,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px' }}>{fmt(totalDebit)}</td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px', color:'#86efac' }}>{fmt(totalCredit)}</td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:900, fontSize:'14px', color: (type==='bank'||type==='cash')?'#0369a1': closingBalance>0?'#fbbf24':'#86efac' }}>
-                    {fmt(Math.abs(closingBalance))} {closingBalance >= 0 ? 'DR' : 'CR'}
+                    {fmt(Math.abs(closingBalance))} {(type==='bank'||type==='cash') ? (closingBalance>=0?'CR':'DR') : (closingBalance>=0?'DR':'CR')}
                   </td>
                 </tr>
               </tfoot>
