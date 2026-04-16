@@ -190,7 +190,7 @@ export default function Reports() {
           debit: 0, credit: t.amount || 0, raw: t,
         }));
       }
-      ledger.sort((a,b) => new Date(a.date) - new Date(b.date));
+      ledger.sort((a,b) => new Date(a.date||a.paymentDate) - new Date(b.date||b.paymentDate));
 
       // Running balance — single source of truth
       // opening balance only applies to bank/cash accounts
@@ -304,8 +304,8 @@ function PartyStatement({ data, from, to, onPrint }) {
     vendor:     { label:'Vendor',   color:'#3b82f6', debitLabel:'Bill Amount',    creditLabel:'Payment Made' },
     director:      { label:'Director',          color:'#8b5cf6', debitLabel:'Amount',      creditLabel:'Amount' },
     director_loan: { label:'Director Loan',    color:'#dc2626', debitLabel:'Repaid (DR)',    creditLabel:'Loan Given (CR)' },
-    cash:          { label:'Cash in Hand',    color:'#92400e', debitLabel:'Cash In (DR)',   creditLabel:'Cash Out (CR)' },
-    bank:          { label:'Bank Account',    color:'#0369a1', debitLabel:'Debit (OUT)',    creditLabel:'Credit (IN)' },
+    cash:          { label:'Cash in Hand',    color:'#92400e', debitLabel:'Cash In',       creditLabel:'Cash Out' },
+    bank:          { label:'Bank Account',    color:'#0369a1', debitLabel:'Credit (IN)',   creditLabel:'Debit (OUT)' },
     employee:   { label:'Employee', color:'#0ea5e9', debitLabel:'Amount',         creditLabel:'Amount' },
     contractor: { label:'Contractor',color:'#f97316',debitLabel:'Amount',         creditLabel:'Amount' },
   };
@@ -331,8 +331,10 @@ function PartyStatement({ data, from, to, onPrint }) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'24px', paddingBottom:'20px', borderBottom:'2px solid #e2e8f0' }}>
           <div>
             <img src={logo} alt="Tesseract Flex Fuel" style={{ width:'180px', marginBottom:'6px', display:'block' }}/>
-            <div style={{ fontSize:'12px', color:'#6b7280' }}>Biodiesel Manufacturing · Vadodara, Gujarat</div>
-            <div style={{ fontSize:'12px', color:'#6b7280' }}>GSTIN: 24XXXXX1234X1Z5</div>
+            <div style={{ fontSize:'12px', color:'#6b7280' }}>Sustainable Biodiesel Manufacturer</div>
+            <div style={{ fontSize:'12px', color:'#6b7280' }}>44B Suncity Industrial Park, Haripura</div>
+            <div style={{ fontSize:'12px', color:'#6b7280' }}>Ta.Savli Dist. Vadodara, Gujarat</div>
+            <div style={{ fontSize:'12px', color:'#6b7280' }}>CIN : U46610GJ2023PTC144557</div>
           </div>
           <div style={{ textAlign:'right' }}>
             <div style={{ fontSize:'18px', fontWeight:800, color: meta.color, textTransform:'uppercase', letterSpacing:'0.05em' }}>{meta.label} Statement</div>
@@ -356,9 +358,9 @@ function PartyStatement({ data, from, to, onPrint }) {
             <div style={{ fontSize:'11px', fontWeight:700, color:'#6b7280', textTransform:'uppercase', marginBottom:'4px' }}>{meta.creditLabel}</div>
             <div style={{ fontSize:'18px', fontWeight:800, color:'#16a34a' }}>{fmt(totalCredit)}</div>
           </div>
-          <div style={{ background: closingBalance > 0 ? '#fff7ed':'#f0fdf4', border:`1px solid ${closingBalance>0?'#fed7aa':'#bbf7d0'}`, borderRadius:'8px', padding:'14px', borderLeft:`4px solid ${closingBalance>0?'#f97316':'#16a34a'}` }}>
+          <div style={{ background: (type==='bank'||type==='cash') ? (closingBalance>=0?'#f0fdf4':'#fff7ed') : (closingBalance>0?'#fff7ed':'#f0fdf4'), border:`1px solid ${(type==='bank'||type==='cash')?(closingBalance>=0?'#bbf7d0':'#fed7aa'):(closingBalance>0?'#fed7aa':'#bbf7d0')}`, borderRadius:'8px', padding:'14px', borderLeft:`4px solid ${(type==='bank'||type==='cash')?(closingBalance>=0?'#16a34a':'#f97316'):(closingBalance>0?'#f97316':'#16a34a')}` }}>
             <div style={{ fontSize:'11px', fontWeight:700, color:'#6b7280', textTransform:'uppercase', marginBottom:'4px' }}>Closing Balance</div>
-            <div style={{ fontSize:'18px', fontWeight:800, color: closingBalance>0?'#f97316':'#16a34a' }}>{fmt(Math.abs(closingBalance))} {(type==='bank'||type==='cash') ? (closingBalance>=0?'CR':'DR') : (closingBalance>0?'DR':'CR')}</div>
+            <div style={{ fontSize:'18px', fontWeight:800, color: (type==='bank'||type==='cash')?(closingBalance>=0?'#16a34a':'#f97316'):(closingBalance>0?'#f97316':'#16a34a') }}>{fmt(Math.abs(closingBalance))} {(type==='bank'||type==='cash') ? (closingBalance>=0?'CR':'DR') : (closingBalance>0?'DR':'CR')}</div>
           </div>
         </div>
 
@@ -379,7 +381,7 @@ function PartyStatement({ data, from, to, onPrint }) {
             </div>
             <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'11px', color:'#6b7280', fontWeight:700, textTransform:'uppercase' }}>Closing Balance</div>
-              <div style={{ fontSize:'16px', fontWeight:800, color: type==='bank'?'#0369a1':'#92400e', marginTop:'4px' }}>{fmt(Math.abs(closingBalance))}</div>
+              <div style={{ fontSize:'16px', fontWeight:800, color: type==='bank'?'#0369a1':'#92400e', marginTop:'4px' }}>{fmt(Math.abs(closingBalance))} <span style={{fontSize:'12px'}}>{closingBalance>=0?'CR':'DR'}</span></div>
             </div>
           </div>
         )}
@@ -447,7 +449,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', color: r.debit>0 ? '#111827':'#d1d5db', fontWeight: r.debit>0?700:400 }}>{r.debit>0 ? fmt(r.debit) : '—'}</td>
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', color: r.credit>0 ? '#16a34a':'#d1d5db', fontWeight: r.credit>0?700:400 }}>{r.credit>0 ? fmt(r.credit) : '—'}</td>
                     <td style={{ padding:'9px 12px', textAlign:'right', fontFamily:'monospace', fontWeight:700, color: r.balance>0?'#f97316': r.balance<0?'#16a34a':'#374151' }}>
-                      {fmt(Math.abs(r.balance))} {(type==='bank'||type==='cash') ? (r.balance>=0?'CR':'DR') : (r.balance>0?'DR':r.balance<0?'CR':'')}
+                      {fmt(Math.abs(r.balance))} {(type==='bank'||type==='cash') ? (r.balance>=0?'CR':'DR') : (r.balance>0?'DR':r.balance<0?'CR':'—')}
                     </td>
                   </tr>
                 ))}
@@ -459,7 +461,7 @@ function PartyStatement({ data, from, to, onPrint }) {
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px' }}>{fmt(totalDebit)}</td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'13px', color:'#86efac' }}>{fmt(totalCredit)}</td>
                   <td style={{ padding:'12px', textAlign:'right', fontFamily:'monospace', fontWeight:900, fontSize:'14px', color: (type==='bank'||type==='cash')?'#0369a1': closingBalance>0?'#fbbf24':'#86efac' }}>
-                    {fmt(Math.abs(closingBalance))} {(type==='bank'||type==='cash') ? (closingBalance>=0?'CR':'DR') : (closingBalance>=0?'DR':'CR')}
+                    {fmt(Math.abs(closingBalance))} {(type==='bank'||type==='cash') ? (closingBalance>=0?'CR':'DR') : (closingBalance>0?'DR':'CR')}
                   </td>
                 </tr>
               </tfoot>

@@ -216,7 +216,7 @@ router.get('/bank-statement', async (req, res) => {
         mode:        t.paymentMode,
         source:      'party',
       })),
-    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+    ].sort((a, b) => new Date(a.date||0) - new Date(b.date||0));
 
     res.json({ success: true, data: rows });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
